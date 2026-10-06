@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Homebox</title>
+<body style="font-family:sans-serif;max-width:360px;margin:3em auto;padding:0 1em">
+<h3>Homebox</h3>
+<form id="f">
+  <input id="pw" type="password" placeholder="Password" style="width:100%;padding:.6em;font-size:1em">
+  <button style="margin-top:.6em;padding:.6em 1em">Open</button>
+</form>
+<p id="msg"></p>
+<script>
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function decrypt(pw, blob) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {name: "PBKDF2", salt: b64(blob.salt), iterations: blob.iter, hash: "SHA-256"},
+    base, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: b64(blob.iv)}, key, b64(blob.data));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+async function go(pw) {
+  const msg = document.getElementById("msg");
+  msg.textContent = "Connecting…";
+  try {
+    const blob = await (await fetch("ip.json?t=" + Date.now(), {cache: "no-store"})).json();
+    const {host, port} = await decrypt(pw, blob);
+    const a = new URLSearchParams(location.search).get("a");
+    localStorage.setItem("hb_pw", pw);
+    location.href = `http://${host}:${port}` + (a ? `/a/${encodeURIComponent(a)}` : "");
+  } catch (e) {
+    localStorage.removeItem("hb_pw");
+    msg.textContent = "Wrong password or data unavailable.";
+  }
+}
+
+document.getElementById("f").onsubmit = e => { e.preventDefault(); go(document.getElementById("pw").value); };
+const saved = localStorage.getItem("hb_pw");
+if (saved) go(saved);
+</script>
